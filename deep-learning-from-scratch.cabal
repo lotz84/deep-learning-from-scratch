@@ -1,14 +1,7 @@
-name:                deeplearning-hs
+name:                deep-learning-from-scratch
 version:             0.1.0.0
-synopsis:            Initial project template from stack
 description:         Please see README.md
-homepage:            https://github.com/githubuser/deeplearning-hs#readme
-license:             BSD3
-license-file:        LICENSE
-author:              Author name here
-maintainer:          example@example.com
-copyright:           2017 Author name here
-category:            Web
+homepage:            https://github.com/lotz84/deep-learning-from-scratch
 build-type:          Simple
 extra-source-files:  README.md
 cabal-version:       >=1.10
@@ -27,6 +20,10 @@ test-suite deeplearning-hs-test
   type:                exitcode-stdio-1.0
   hs-source-dirs:      test
   main-is:             Spec.hs
+  other-modules:       Spec_2_3_1
+                     , Spec_2_3_3
+                     , Spec_2_5_2
+                     , Spec_3_4_3
   build-depends:       base
                      , hspec
                      , hmatrix
