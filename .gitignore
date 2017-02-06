@@ -17,4 +17,5 @@ cabal.sandbox.config
 *.hp
 .stack-work/
 
-
+data/*
+!data/.gitkeep
