@@ -26,14 +26,14 @@ data MatrixImage
 instance HasImageParser MatrixImage where
   type Image MatrixImage = [[Double]]
   imageParser _ w h = P.count h (P.count w (fromIntegral <$> P.anyWord8))
-  normalize _ xs = map (map (/ (sum (map sum xs)))) xs
+  normalize _ xs = map (map (/ 255.0)) xs
 
 data FlattenImage
 
 instance HasImageParser FlattenImage where
   type Image FlattenImage = [Double]
   imageParser _ w h = P.count (w * h) (fromIntegral <$> P.anyWord8)
-  normalize _ xs = map (/ (sum xs)) xs
+  normalize _ xs = map (/ 255.0) xs
 
 class HasLabelParser label where
   type Label label
