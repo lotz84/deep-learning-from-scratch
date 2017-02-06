@@ -19,18 +19,21 @@ import Data.Proxy
 class HasImageParser image where
   type Image image
   imageParser :: Proxy image -> Int -> Int -> Parser (Image image)
+  normalize :: Proxy image -> Image image -> Image image
 
 data MatrixImage
 
 instance HasImageParser MatrixImage where
-  type Image MatrixImage = [[Word8]]
-  imageParser _ w h = P.count h (P.count w P.anyWord8)
+  type Image MatrixImage = [[Double]]
+  imageParser _ w h = P.count h (P.count w (fromIntegral <$> P.anyWord8))
+  normalize _ xs = map (map (/ (sum (map sum xs)))) xs
 
 data FlattenImage
 
 instance HasImageParser FlattenImage where
-  type Image FlattenImage = [Word8]
-  imageParser _ w h = P.count (w * h) P.anyWord8
+  type Image FlattenImage = [Double]
+  imageParser _ w h = P.count (w * h) (fromIntegral <$> P.anyWord8)
+  normalize _ xs = map (/ (sum xs)) xs
 
 class HasLabelParser label where
   type Label label
@@ -115,21 +118,21 @@ getLabels phaseProxy labelProxy = do
     Left msg -> error msg
     Right labels -> pure labels
 
-getImages :: (HasImageFileLocate phase, HasImageParser image) => Proxy phase -> Proxy image -> IO (Images (Image image))
-getImages phaseProxy imageProxy = do
+getImages :: (HasImageFileLocate phase, HasImageParser image) => Bool -> Proxy phase -> Proxy image -> IO (Images (Image image))
+getImages doNormalize phaseProxy imageProxy = do
   content <- readOrDownloadFile (imageFilePath phaseProxy) (imageFileRequest phaseProxy)
   case P.parseOnly (imagesParser imageProxy) content of
     Left msg -> error msg
-    Right images -> pure images
+    Right (Images len width height images) -> pure (Images len width height (if doNormalize then map (normalize imageProxy) images else images))
 
-displayImage :: [[Word8]] -> IO ()
+displayImage :: [[Double]] -> IO ()
 displayImage image = mapM_ putStrLn (map (map toGrayscale) image)
   where
     grayscale = " .:-=+*#%@"
-    index x = (10 * fromIntegral x) `quot` 256
+    index x = (10 * ceiling x) `quot` 256
     toGrayscale x = grayscale !! (index x)
 
 main :: IO ()
 main = do
-  (Images _ _ _ images) <- getImages (Proxy @Test) (Proxy @MatrixImage)
+  (Images _ _ _ images) <- getImages False (Proxy @Test) (Proxy @MatrixImage)
   displayImage (images !! 1)
