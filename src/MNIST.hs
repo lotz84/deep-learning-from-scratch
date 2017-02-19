@@ -1,4 +1,7 @@
 {-# LANGUAGE TypeApplications #-}
+{-# LANGUAGE AllowAmbiguousTypes #-}
+{-# LANGUAGE RankNTypes #-}
+{-# LANGUAGE ScopedTypeVariables #-}
 {-# LANGUAGE TypeFamilies #-}
 {-# LANGUAGE OverloadedStrings #-}
 
@@ -14,42 +17,40 @@ import Data.Word (Word8)
 import Network.HTTP.Simple (Request, httpLBS, getResponseBody)
 import System.Directory (doesFileExist)
 
-import Data.Proxy
-
 class HasImageParser image where
   type Image image
-  imageParser :: Proxy image -> Int -> Int -> Parser (Image image)
-  normalize :: Proxy image -> Image image -> Image image
+  imageParser :: Int -> Int -> Parser (Image image)
+  normalize :: Image image -> Image image
 
 data MatrixImage
 
 instance HasImageParser MatrixImage where
   type Image MatrixImage = [[Double]]
-  imageParser _ w h = P.count h (P.count w (fromIntegral <$> P.anyWord8))
-  normalize _ xs = map (map (/ 255.0)) xs
+  imageParser w h = P.count h (P.count w (fromIntegral <$> P.anyWord8))
+  normalize xs = map (map (/ 255.0)) xs
 
 data FlattenImage
 
 instance HasImageParser FlattenImage where
   type Image FlattenImage = [Double]
-  imageParser _ w h = P.count (w * h) (fromIntegral <$> P.anyWord8)
-  normalize _ xs = map (/ 255.0) xs
+  imageParser w h = P.count (w * h) (fromIntegral <$> P.anyWord8)
+  normalize xs = map (/ 255.0) xs
 
 class HasLabelParser label where
   type Label label
-  labelParser :: Proxy label -> Parser (Label label)
+  labelParser :: Parser (Label label)
 
 data NumberLabel
 
 instance HasLabelParser NumberLabel where
   type Label NumberLabel = Word8
-  labelParser _ = P.anyWord8
+  labelParser = P.anyWord8
 
 data OneHotLabel
 
 instance HasLabelParser OneHotLabel where
   type Label OneHotLabel = [Word8]
-  labelParser _ = fmap (\w -> map (\v -> if w == v then 1 else 0) [0..9]) P.anyWord8
+  labelParser = fmap (\w -> map (\v -> if w == v then 1 else 0) [0..9]) P.anyWord8
 
 data Labels label = Labels Int [label] deriving Show
 data Images image = Images Int Int Int [image] deriving Show
@@ -58,48 +59,48 @@ words2Int :: [Word8] -> Int
 words2Int xs = sum $ zipWith (*) (reverse xs') (map (256^) [0..])
   where xs' = map fromIntegral xs
 
-labelsParser :: HasLabelParser label => Proxy label -> Parser (Labels (Label label))
-labelsParser proxy = do
+labelsParser :: forall label. HasLabelParser label => Parser (Labels (Label label))
+labelsParser = do
   P.string $ BS.pack [0,0,8,1]
   len <- words2Int <$> P.count 4 P.anyWord8
-  labels <- P.count len (labelParser proxy)
+  labels <- P.count len (labelParser @label)
   pure (Labels len labels)
 
-imagesParser :: HasImageParser image => Proxy image -> Parser (Images (Image image))
-imagesParser proxy = do
+imagesParser :: forall image. HasImageParser image => Parser (Images (Image image))
+imagesParser = do
   P.string $ BS.pack [0,0,8,3]
   len    <- words2Int <$> P.count 4 P.anyWord8
   width  <- words2Int <$> P.count 4 P.anyWord8
   height <- words2Int <$> P.count 4 P.anyWord8
-  images <- P.count len (imageParser proxy width height)
+  images <- P.count len (imageParser @image width height)
   pure (Images len width height images)
 
 data Training
 data Test
 
 class HasLabelFileLocate a where
-  labelFilePath :: Proxy a -> String
-  labelFileRequest :: Proxy a -> Request
+  labelFilePath :: String
+  labelFileRequest :: Request
 
 instance HasLabelFileLocate Test where
-  labelFilePath _ = "data/t10k-labels-idx1-ubyte.gz"
-  labelFileRequest _ = "http://yann.lecun.com/exdb/mnist/t10k-labels-idx1-ubyte.gz"
+  labelFilePath = "data/t10k-labels-idx1-ubyte.gz"
+  labelFileRequest = "http://yann.lecun.com/exdb/mnist/t10k-labels-idx1-ubyte.gz"
 
 instance HasLabelFileLocate Training where
-  labelFilePath _ = "data/train-labels-idx1-ubyte.gz"
-  labelFileRequest _ = "http://yann.lecun.com/exdb/mnist/train-labels-idx1-ubyte.gz"
+  labelFilePath = "data/train-labels-idx1-ubyte.gz"
+  labelFileRequest = "http://yann.lecun.com/exdb/mnist/train-labels-idx1-ubyte.gz"
 
 class HasImageFileLocate a where
-  imageFilePath :: Proxy a -> String
-  imageFileRequest :: Proxy a -> Request
+  imageFilePath :: String
+  imageFileRequest :: Request
 
 instance HasImageFileLocate Test where
-  imageFilePath _ = "data/t10k-images-idx3-ubyte.gz"
-  imageFileRequest _ = "http://yann.lecun.com/exdb/mnist/t10k-images-idx3-ubyte.gz"
+  imageFilePath = "data/t10k-images-idx3-ubyte.gz"
+  imageFileRequest = "http://yann.lecun.com/exdb/mnist/t10k-images-idx3-ubyte.gz"
 
 instance HasImageFileLocate Training where
-  imageFilePath _ = "data/train-images-idx3-ubyte.gz"
-  imageFileRequest _ = "http://yann.lecun.com/exdb/mnist/train-images-idx3-ubyte.gz"
+  imageFilePath = "data/train-images-idx3-ubyte.gz"
+  imageFileRequest = "http://yann.lecun.com/exdb/mnist/train-images-idx3-ubyte.gz"
 
 readOrDownloadFile :: FilePath -> Request -> IO BS.ByteString
 readOrDownloadFile path req = do
@@ -111,19 +112,19 @@ readOrDownloadFile path req = do
     downloadFile = do
       BS.writeFile path =<< (BL.toStrict . getResponseBody <$> httpLBS req)
 
-getLabels :: (HasLabelFileLocate phase, HasLabelParser label) => Proxy phase -> Proxy label -> IO (Labels (Label label))
-getLabels phaseProxy labelProxy = do
-  content <- readOrDownloadFile (labelFilePath phaseProxy) (labelFileRequest phaseProxy)
-  case P.parseOnly (labelsParser labelProxy) content of
+getLabels :: forall phase label. (HasLabelFileLocate phase, HasLabelParser label) => IO (Labels (Label label))
+getLabels  = do
+  content <- readOrDownloadFile (labelFilePath @phase) (labelFileRequest @phase)
+  case P.parseOnly (labelsParser @label) content of
     Left msg -> error msg
     Right labels -> pure labels
 
-getImages :: (HasImageFileLocate phase, HasImageParser image) => Bool -> Proxy phase -> Proxy image -> IO (Images (Image image))
-getImages doNormalize phaseProxy imageProxy = do
-  content <- readOrDownloadFile (imageFilePath phaseProxy) (imageFileRequest phaseProxy)
-  case P.parseOnly (imagesParser imageProxy) content of
+getImages :: forall phase image. (HasImageFileLocate phase, HasImageParser image) => Bool -> IO (Images (Image image))
+getImages doNormalize = do
+  content <- readOrDownloadFile (imageFilePath @phase) (imageFileRequest @phase)
+  case P.parseOnly (imagesParser @image) content of
     Left msg -> error msg
-    Right (Images len width height images) -> pure (Images len width height (if doNormalize then map (normalize imageProxy) images else images))
+    Right (Images len width height images) -> pure (Images len width height (if doNormalize then map (normalize @image) images else images))
 
 displayImage :: [[Double]] -> IO ()
 displayImage image = mapM_ putStrLn (map (map toGrayscale) image)
@@ -134,5 +135,5 @@ displayImage image = mapM_ putStrLn (map (map toGrayscale) image)
 
 main :: IO ()
 main = do
-  (Images _ _ _ images) <- getImages False (Proxy @Test) (Proxy @MatrixImage)
+  (Images _ _ _ images) <- getImages @Test @MatrixImage False
   displayImage (images !! 1)
