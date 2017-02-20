@@ -12,11 +12,13 @@ library
                      , Section_2_3_3
                      , Section_2_5_2
                      , Section_3_4_3
+                     , Section_4_5
                      , MNIST
   build-depends:       base >= 4.7 && < 5
                      , bytestring
                      , directory
                      , vector
+                     , mwc-random
                      , zlib
                      , http-conduit
                      , attoparsec
