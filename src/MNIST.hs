@@ -132,8 +132,3 @@ displayImage image = mapM_ putStrLn (map (map toGrayscale) image)
     grayscale = " .:-=+*#%@"
     index x = (10 * ceiling x) `quot` 256
     toGrayscale x = grayscale !! (index x)
-
-main :: IO ()
-main = do
-  (Images _ _ _ images) <- getImages @Test @MatrixImage False
-  displayImage (images !! 1)
